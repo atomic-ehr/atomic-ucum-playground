@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Autocomplete } from "@/components/ui/autocomplete"
 import ucum from "@atomic-ehr/ucum"
 import type { ValidationResult } from "@atomic-ehr/ucum"
+import { searchUCUMCodes } from "@/lib/ucum-common"
 
 const examples = [
   "mg/dL",
@@ -52,6 +53,15 @@ export default function ParserPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
+  
+  // Autocomplete options based on current input
+  const autocompleteOptions = useMemo(() => {
+    const suggestions = searchUCUMCodes(expression, 15)
+    return suggestions.map(item => ({
+      value: item.code,
+      label: item.display
+    }))
+  }, [expression])
 
   const parseExpression = async (expr?: string) => {
     const exprToParse = expr || expression
@@ -126,11 +136,17 @@ export default function ParserPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex space-x-2">
-              <Input
+              <Autocomplete
                 value={expression}
-                onChange={(e) => setExpression(e.target.value)}
+                onChange={setExpression}
+                onSelect={(value) => {
+                  setExpression(value)
+                  parseExpression(value)
+                }}
+                options={autocompleteOptions}
                 placeholder="Enter UCUM expression (e.g., mg/dL)"
-                onKeyDown={(e) => e.key === "Enter" && parseExpression()}
+                onKeyDown={(e) => e.key === "Enter" && !e.defaultPrevented && parseExpression()}
+                className="flex-1"
               />
               <Button onClick={() => parseExpression()} disabled={loading}>
                 {loading ? "Parsing..." : "Parse"}

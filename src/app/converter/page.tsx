@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Autocomplete } from "@/components/ui/autocomplete"
 import ucum from "@atomic-ehr/ucum"
+import { searchUCUMCodes } from "@/lib/ucum-common"
 
 const conversionExamples = [
   { name: "Hemoglobin", value: 14, from: "g/dL", to: "g/L" },
@@ -22,6 +24,23 @@ export default function ConverterPage() {
   const [result, setResult] = useState<number | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  
+  // Autocomplete options for units
+  const fromUnitOptions = useMemo(() => {
+    const suggestions = searchUCUMCodes(fromUnit, 15)
+    return suggestions.map(item => ({
+      value: item.code,
+      label: item.display
+    }))
+  }, [fromUnit])
+  
+  const toUnitOptions = useMemo(() => {
+    const suggestions = searchUCUMCodes(toUnit, 15)
+    return suggestions.map(item => ({
+      value: item.code,
+      label: item.display
+    }))
+  }, [toUnit])
 
   const performConversion = async () => {
     if (!value || !fromUnit.trim() || !toUnit.trim()) return
@@ -125,9 +144,10 @@ export default function ConverterPage() {
               <div className="grid grid-cols-[1fr,auto,1fr] gap-2 items-end">
                 <div>
                   <label className="text-sm font-medium">From Unit</label>
-                  <Input
+                  <Autocomplete
                     value={fromUnit}
-                    onChange={(e) => setFromUnit(e.target.value)}
+                    onChange={setFromUnit}
+                    options={fromUnitOptions}
                     placeholder="e.g., mg/dL"
                   />
                 </div>
@@ -144,9 +164,10 @@ export default function ConverterPage() {
                 
                 <div>
                   <label className="text-sm font-medium">To Unit</label>
-                  <Input
+                  <Autocomplete
                     value={toUnit}
-                    onChange={(e) => setToUnit(e.target.value)}
+                    onChange={setToUnit}
+                    options={toUnitOptions}
                     placeholder="e.g., mmol/L"
                   />
                 </div>

@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Autocomplete } from "@/components/ui/autocomplete"
 import ucum from "@atomic-ehr/ucum"
 import type { Quantity } from "@atomic-ehr/ucum"
+import { searchUCUMCodes } from "@/lib/ucum-common"
 
 type ComparisonResultDisplay = {
   comparison: -1 | 0 | 1;
@@ -58,6 +60,23 @@ export default function OperationsPage() {
   const [result, setResult] = useState<Quantity | ComparisonResultDisplay | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  
+  // Autocomplete options for units
+  const codeAOptions = useMemo(() => {
+    const suggestions = searchUCUMCodes(codeA, 15)
+    return suggestions.map(item => ({
+      value: item.code,
+      label: item.display
+    }))
+  }, [codeA])
+  
+  const codeBOptions = useMemo(() => {
+    const suggestions = searchUCUMCodes(codeB, 15)
+    return suggestions.map(item => ({
+      value: item.code,
+      label: item.display
+    }))
+  }, [codeB])
 
   const performOperation = async () => {
     if (!valueA || !codeA.trim() || !valueB || !codeB.trim()) return
@@ -353,9 +372,10 @@ export default function OperationsPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Unit</label>
-                    <Input
+                    <Autocomplete
                       value={codeA}
-                      onChange={(e) => setCodeA(e.target.value)}
+                      onChange={setCodeA}
+                      options={codeAOptions}
                       placeholder="e.g., mm[Hg]"
                     />
                   </div>
@@ -392,9 +412,10 @@ export default function OperationsPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Unit</label>
-                    <Input
+                    <Autocomplete
                       value={codeB}
-                      onChange={(e) => setCodeB(e.target.value)}
+                      onChange={setCodeB}
+                      options={codeBOptions}
                       placeholder="e.g., mm[Hg]"
                     />
                   </div>

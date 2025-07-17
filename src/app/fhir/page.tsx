@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Autocomplete } from "@/components/ui/autocomplete"
 import ucum from "@atomic-ehr/ucum"
+import { searchUCUMCodes } from "@/lib/ucum-common"
 
 type UCUMQuantity = {
   value: number;
@@ -41,6 +43,15 @@ export default function FHIRPage() {
   const [result, setResult] = useState<UCUMQuantity | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  
+  // Autocomplete options for UCUM code
+  const codeOptions = useMemo(() => {
+    const suggestions = searchUCUMCodes(code, 15)
+    return suggestions.map(item => ({
+      value: item.code,
+      label: item.display
+    }))
+  }, [code])
 
   const buildQuantity = async () => {
     if (!value || !code.trim()) return
@@ -153,9 +164,18 @@ export default function FHIRPage() {
               
               <div>
                 <label className="text-sm font-medium">UCUM Code *</label>
-                <Input
+                <Autocomplete
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={setCode}
+                  onSelect={(value) => {
+                    setCode(value)
+                    // Auto-update display name when a code is selected
+                    const suggestion = searchUCUMCodes(value, 1)[0]
+                    if (suggestion) {
+                      setUnit(suggestion.display)
+                    }
+                  }}
+                  options={codeOptions}
                   placeholder="e.g., mg/dL, mmol/L, kg"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
