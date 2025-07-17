@@ -13,13 +13,13 @@ export default function Home() {
       title: "Converter",
       description: "Convert between compatible units",
       href: "/converter", 
-      examples: ["100 mg/dL → mmol/L", "98.6 °F → °C", "150 lb → kg"]
+      examples: ["14 g/dL → g/L", "98.6 °F → °C", "150 lb → kg"]
     },
     {
-      title: "FHIR",
-      description: "Build FHIR Quantity objects with validation",
+      title: "Quantity",
+      description: "Build quantity objects with UCUM validation",
       href: "/fhir",
-      examples: ["Glucose: 5.5 mmol/L", "Weight: 70 kg", "BP: 120 mm[Hg]"]
+      examples: ["Creatinine: 1.2 mg/dL", "Weight: 70 kg", "BP: 120 mm[Hg]"]
     },
     {
       title: "Operations",
@@ -33,7 +33,7 @@ export default function Home() {
     <div className="space-y-8">
       <div className="text-center space-y-4">
         <h1 className="text-4xl font-bold text-foreground">
-          UCUM Playground
+          @atomic-ehr/ucum
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
           Interactive playground for the Unified Code for Units of Measure (UCUM).

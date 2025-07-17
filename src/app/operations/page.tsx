@@ -4,13 +4,14 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { parse, convert, type UCUMQuantity } from "@atomic-ehr/ucum"
+import ucum from "@atomic-ehr/ucum"
+import type { Quantity } from "@atomic-ehr/ucum"
 
 type ComparisonResultDisplay = {
   comparison: -1 | 0 | 1;
   description: string;
-  a: UCUMQuantity;
-  b: UCUMQuantity;
+  a: Quantity;
+  b: Quantity;
   equal: boolean;
   convertible: boolean;
 };
@@ -29,10 +30,10 @@ const operationExamples = [
     b: { value: 250, code: "mg" }
   },
   {
-    name: "Glucose Comparison",
+    name: "Sodium Level Comparison",
     operation: "compare",
-    a: { value: 7.5, code: "mmol/L" },
-    b: { value: 6.0, code: "mmol/L" }
+    a: { value: 145, code: "mmol/L" },
+    b: { value: 135, code: "mmol/L" }
   },
   {
     name: "Weight Change",
@@ -54,7 +55,7 @@ export default function OperationsPage() {
   const [valueB, setValueB] = useState(120)
   const [codeB, setCodeB] = useState("mm[Hg]")
   const [operation, setOperation] = useState("subtract")
-  const [result, setResult] = useState<UCUMQuantity | ComparisonResultDisplay | null>(null)
+  const [result, setResult] = useState<Quantity | ComparisonResultDisplay | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
@@ -65,37 +66,55 @@ export default function OperationsPage() {
     setError("")
     
     try {
-      const qtyA = parse(`${valueA} ${codeA}`)
-      const qtyB = parse(`${valueB} ${codeB}`)
+      // Validate both units first
+      const validationA = ucum.validate(codeA)
+      const validationB = ucum.validate(codeB)
       
-      let operationResult: UCUMQuantity | ComparisonResultDisplay
+      if (!validationA.valid) {
+        setError(`Invalid unit A: ${validationA.errors[0]?.message || codeA}`)
+        setResult(null)
+        return
+      }
+      
+      if (!validationB.valid) {
+        setError(`Invalid unit B: ${validationB.errors[0]?.message || codeB}`)
+        setResult(null)
+        return
+      }
+      
+      // Create quantities
+      const qtyA = ucum.quantity(valueA, codeA)
+      const qtyB = ucum.quantity(valueB, codeB)
+      
+      let operationResult: Quantity | ComparisonResultDisplay
       
       switch (operation) {
         case "add":
-          // Convert B to A's unit and add
-          const convertedB = convert(qtyB, codeA)
-          operationResult = {
-            value: qtyA.value + convertedB.value,
-            code: codeA,
-            unit: qtyA.unit,
-            system: "http://unitsofmeasure.org"
+          // Check if units are convertible
+          if (!ucum.isConvertible(codeB, codeA)) {
+            setError(`Cannot add ${codeA} and ${codeB} - incompatible dimensions`)
+            setResult(null)
+            return
           }
+          operationResult = ucum.add(qtyA, qtyB)
           break
+          
         case "subtract":
-          // Convert B to A's unit and subtract
-          const convertedBSub = convert(qtyB, codeA)
-          operationResult = {
-            value: qtyA.value - convertedBSub.value,
-            code: codeA,
-            unit: qtyA.unit,
-            system: "http://unitsofmeasure.org"
+          // Check if units are convertible
+          if (!ucum.isConvertible(codeB, codeA)) {
+            setError(`Cannot subtract ${codeB} from ${codeA} - incompatible dimensions`)
+            setResult(null)
+            return
           }
+          operationResult = ucum.subtract(qtyA, qtyB)
           break
+          
         case "compare":
-          try {
-            const convertedBComp = convert(qtyB, codeA)
-            const comparison = qtyA.value === convertedBComp.value ? 0 : 
-                              qtyA.value > convertedBComp.value ? 1 : -1
+          if (ucum.isConvertible(codeB, codeA)) {
+            // Convert B to A's unit for comparison
+            const convertedValueB = ucum.convert(valueB, codeB, codeA)
+            const comparison = valueA === convertedValueB ? 0 : 
+                              valueA > convertedValueB ? 1 : -1
             operationResult = {
               comparison,
               description: comparison === 0 ? "Equal" : 
@@ -105,7 +124,7 @@ export default function OperationsPage() {
               equal: comparison === 0,
               convertible: true
             }
-          } catch {
+          } else {
             // Units not convertible
             operationResult = {
               comparison: 0,
@@ -117,6 +136,7 @@ export default function OperationsPage() {
             }
           }
           break
+          
         default:
           throw new Error("Unknown operation")
       }
@@ -138,6 +158,113 @@ export default function OperationsPage() {
     setOperation(example.operation)
     setResult(null)
     setError("")
+    // Auto-perform operation after loading example
+    setTimeout(() => {
+      performOperationWithParams(
+        example.a.value,
+        example.a.code,
+        example.b.value,
+        example.b.code,
+        example.operation
+      )
+    }, 100)
+  }
+  
+  const performOperationWithParams = async (
+    valA: number,
+    cdA: string,
+    valB: number,
+    cdB: string,
+    op: string
+  ) => {
+    if (!valA || !cdA.trim() || !valB || !cdB.trim()) return
+    
+    setLoading(true)
+    setError("")
+    
+    try {
+      // Validate both units first
+      const validationA = ucum.validate(cdA)
+      const validationB = ucum.validate(cdB)
+      
+      if (!validationA.valid) {
+        setError(`Invalid unit A: ${validationA.errors[0]?.message || cdA}`)
+        setResult(null)
+        return
+      }
+      
+      if (!validationB.valid) {
+        setError(`Invalid unit B: ${validationB.errors[0]?.message || cdB}`)
+        setResult(null)
+        return
+      }
+      
+      // Create quantities
+      const qtyA = ucum.quantity(valA, cdA)
+      const qtyB = ucum.quantity(valB, cdB)
+      
+      let operationResult: Quantity | ComparisonResultDisplay
+      
+      switch (op) {
+        case "add":
+          // Check if units are convertible
+          if (!ucum.isConvertible(cdB, cdA)) {
+            setError(`Cannot add ${cdA} and ${cdB} - incompatible dimensions`)
+            setResult(null)
+            return
+          }
+          operationResult = ucum.add(qtyA, qtyB)
+          break
+          
+        case "subtract":
+          // Check if units are convertible
+          if (!ucum.isConvertible(cdB, cdA)) {
+            setError(`Cannot subtract ${cdB} from ${cdA} - incompatible dimensions`)
+            setResult(null)
+            return
+          }
+          operationResult = ucum.subtract(qtyA, qtyB)
+          break
+          
+        case "compare":
+          if (ucum.isConvertible(cdB, cdA)) {
+            // Convert B to A's unit for comparison
+            const convertedValueB = ucum.convert(valB, cdB, cdA)
+            const comparison = valA === convertedValueB ? 0 : 
+                              valA > convertedValueB ? 1 : -1
+            operationResult = {
+              comparison,
+              description: comparison === 0 ? "Equal" : 
+                          comparison === 1 ? "Greater than" : "Less than",
+              a: qtyA,
+              b: qtyB,
+              equal: comparison === 0,
+              convertible: true
+            }
+          } else {
+            // Units not convertible
+            operationResult = {
+              comparison: 0,
+              description: "Not comparable (incompatible units)",
+              a: qtyA,
+              b: qtyB,
+              equal: false,
+              convertible: false
+            }
+          }
+          break
+          
+        default:
+          throw new Error("Unknown operation")
+      }
+      
+      setResult(operationResult)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Operation error")
+      setResult(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const renderResult = () => {
@@ -166,13 +293,13 @@ export default function OperationsPage() {
       )
     }
     
-    // Must be a UCUMQuantity (add/subtract result)
-    if ('value' in result && 'code' in result) {
+    // Must be a Quantity (add/subtract result)
+    if ('value' in result && 'unit' in result) {
       return (
         <div className="space-y-4">
           <div className="p-6 bg-primary/5 border border-primary/20 rounded-lg text-center">
             <div className="text-3xl font-bold text-primary mb-2">
-              {result.value} {result.code}
+              {result.value} {result.unit}
             </div>
             <div className="text-sm text-muted-foreground">
               {valueA} {codeA} {operation === "add" ? "+" : "-"} {valueB} {codeB}

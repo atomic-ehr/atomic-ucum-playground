@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { parse } from "@atomic-ehr/ucum"
+import ucum from "@atomic-ehr/ucum"
 
 const examples = [
   "mg/dL",
@@ -16,21 +16,33 @@ const examples = [
   "[degF]",
   "Cel",
   "m2.s-1",
-  "g/(8.h)"
+  "g/(8.h)",
+  // Broken examples
+  "mg//dL",
+  "invalid_unit",
+  "10^^6",
+  "mg..kg",
+  "[unknown]",
+  "mg/",
+  "/mL",
+  "10*",
+  "kg[",
+  "m]]"
 ]
 
 type ParseResult = {
   expression: string;
   isValid: boolean;
-  tokens: never[];
   dimension: string;
   displayName: string;
-  baseUnit: string;
+  type: string;
   canonical?: {
-    value: number;
-    units: Record<string, number>;
+    magnitude: number;
+    units: string;
   };
-  system?: string;
+  isMetric?: boolean;
+  isSpecial?: boolean;
+  isArbitrary?: boolean;
 };
 
 export default function ParserPage() {
@@ -38,26 +50,48 @@ export default function ParserPage() {
   const [result, setResult] = useState<ParseResult | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [validationResult, setValidationResult] = useState<any>(null)
 
-  const parseExpression = async () => {
-    if (!expression.trim()) return
+  const parseExpression = async (expr?: string) => {
+    const exprToParse = expr || expression
+    if (!exprToParse.trim()) return
     
     setLoading(true)
     setError("")
+    setValidationResult(null)
     
     try {
-      const parsed = parse(expression)
-      setResult({
-        expression,
-        isValid: true,
-        tokens: [], // Not available in real API
-        dimension: parsed.ucum?.dimension ? 
-          `[${parsed.ucum.dimension.join(', ')}]` : "Unknown",
-        displayName: parsed.unit || expression,
-        baseUnit: parsed.code,
-        canonical: parsed.ucum?.canonical,
-        system: parsed.system || "http://unitsofmeasure.org"
-      })
+      // First validate the unit
+      const validation = ucum.validate(exprToParse)
+      setValidationResult(validation)
+      
+      if (validation.valid) {
+        // Get detailed unit info
+        const unitInfo = ucum.info(exprToParse)
+        
+        // Format dimension for display
+        const dimensionArray = Object.entries(unitInfo.dimension)
+          .filter(([, value]) => value !== 0)
+          .map(([dim, exp]) => exp === 1 ? dim : `${dim}^${exp}`)
+        
+        setResult({
+          expression: exprToParse,
+          isValid: true,
+          dimension: dimensionArray.length > 0 ? `[${dimensionArray.join(' ')}]` : "[dimensionless]",
+          displayName: ucum.display(exprToParse),
+          type: unitInfo.type,
+          canonical: unitInfo.canonical ? {
+            magnitude: unitInfo.canonical.magnitude,
+            units: unitInfo.canonical.units.map(u => `${u.unit}${u.exponent !== 1 ? `^${u.exponent}` : ''}`).join('.')
+          } : undefined,
+          isMetric: unitInfo.isMetric,
+          isSpecial: unitInfo.isSpecial,
+          isArbitrary: unitInfo.isArbitrary
+        })
+      } else {
+        setError(validation.errors[0]?.message || "Invalid UCUM expression")
+        setResult(null)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Parse error")
       setResult(null)
@@ -68,6 +102,8 @@ export default function ParserPage() {
 
   const handleExampleClick = (example: string) => {
     setExpression(example)
+    // Auto-parse immediately
+    parseExpression(example)
   }
 
   return (
@@ -102,18 +138,39 @@ export default function ParserPage() {
 
             <div className="space-y-2">
               <p className="text-sm font-medium">Quick Examples:</p>
-              <div className="flex flex-wrap gap-2">
-                {examples.map((example) => (
-                  <Button
-                    key={example}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExampleClick(example)}
-                    className="font-mono"
-                  >
-                    {example}
-                  </Button>
-                ))}
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Valid expressions:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {examples.slice(0, 10).map((example) => (
+                      <Button
+                        key={example}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleExampleClick(example)}
+                        className="font-mono"
+                      >
+                        {example}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Invalid expressions (for testing):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {examples.slice(10).map((example) => (
+                      <Button
+                        key={example}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleExampleClick(example)}
+                        className="font-mono border-destructive text-destructive hover:bg-destructive/10"
+                      >
+                        {example}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -131,6 +188,24 @@ export default function ParserPage() {
               <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md">
                 <p className="text-destructive font-medium">Parse Error</p>
                 <p className="text-sm text-destructive/80 mt-1">{error}</p>
+                {validationResult && validationResult.errors[0]?.position !== undefined && (
+                  <div className="mt-3">
+                    <div className="font-mono text-sm bg-destructive/5 p-2 rounded border border-destructive/10 whitespace-pre">
+                      <div>{expression}</div>
+                      <div className="text-destructive">{' '.repeat(validationResult.errors[0].position)}^</div>
+                    </div>
+                    {validationResult.errors[0].context && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Context: {validationResult.errors[0].context}
+                      </p>
+                    )}
+                    {validationResult.errors[0].suggestion && (
+                      <p className="text-xs text-primary mt-1">
+                        Suggestion: {validationResult.errors[0].suggestion}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

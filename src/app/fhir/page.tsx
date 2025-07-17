@@ -4,15 +4,23 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { parse, type UCUMQuantity } from "@atomic-ehr/ucum"
+import ucum from "@atomic-ehr/ucum"
+
+type UCUMQuantity = {
+  value: number;
+  code: string;
+  unit?: string;
+  system: string;
+  comparator?: '<' | '<=' | '>=' | '>' | '~';
+}
 
 type Comparator = '<' | '<=' | '>=' | '>'
 
 const fhirExamples = [
-  { name: "Blood Glucose", value: 5.5, code: "mmol/L", unit: "millimole per liter", comparator: undefined },
+  { name: "Creatinine", value: 1.2, code: "mg/dL", unit: "milligram per deciliter", comparator: undefined },
   { name: "Body Weight", value: 70, code: "kg", unit: "kilogram", comparator: undefined },
   { name: "Blood Pressure", value: 120, code: "mm[Hg]", unit: "millimeter of mercury", comparator: undefined },
-  { name: "High Glucose", value: 11.1, code: "mmol/L", unit: "millimole per liter", comparator: ">" },
+  { name: "High Cholesterol", value: 240, code: "mg/dL", unit: "milligram per deciliter", comparator: ">" },
   { name: "Low Weight", value: 50, code: "kg", unit: "kilogram", comparator: "<" },
   { name: "Tall Height", value: 175, code: "cm", unit: "centimeter", comparator: ">" },
 ]
@@ -26,9 +34,9 @@ const comparators = [
 ]
 
 export default function FHIRPage() {
-  const [value, setValue] = useState(5.5)
-  const [code, setCode] = useState("mmol/L")
-  const [unit, setUnit] = useState("millimole per liter")
+  const [value, setValue] = useState(1.2)
+  const [code, setCode] = useState("mg/dL")
+  const [unit, setUnit] = useState("milligram per deciliter")
   const [comparator, setComparator] = useState("")
   const [result, setResult] = useState<UCUMQuantity | null>(null)
   const [error, setError] = useState("")
@@ -41,12 +49,20 @@ export default function FHIRPage() {
     setError("")
     
     try {
-      const parsed = parse(`${value} ${code}`)
+      // Validate the unit code
+      const validation = ucum.validate(code)
       
+      if (!validation.valid) {
+        setError(`Invalid UCUM code: ${validation.errors[0]?.message || code}`)
+        setResult(null)
+        return
+      }
+      
+      // Build the FHIR Quantity
       const quantity: UCUMQuantity = {
-        value: parsed.value,
-        code: parsed.code,
-        unit: unit.trim() || parsed.unit,
+        value: value,
+        code: code,
+        unit: unit.trim() || ucum.display(code),
         system: "http://unitsofmeasure.org",
         ...(comparator && { comparator: comparator as Comparator })
       }
@@ -66,14 +82,51 @@ export default function FHIRPage() {
     setComparator(example.comparator || "")
     setResult(null)
     setError("")
+    // Auto-build quantity after loading example
+    setTimeout(() => {
+      buildQuantityWithParams(example.value, example.code, example.unit, example.comparator)
+    }, 100)
+  }
+  
+  const buildQuantityWithParams = async (val: number, cd: string, unt: string, comp?: string) => {
+    if (!val || !cd.trim()) return
+    
+    setLoading(true)
+    setError("")
+    
+    try {
+      // Validate the unit code
+      const validation = ucum.validate(cd)
+      
+      if (!validation.valid) {
+        setError(`Invalid UCUM code: ${validation.errors[0]?.message || cd}`)
+        setResult(null)
+        return
+      }
+      
+      // Build the FHIR Quantity
+      const quantity: UCUMQuantity = {
+        value: val,
+        code: cd,
+        unit: unt.trim() || ucum.display(cd),
+        system: "http://unitsofmeasure.org",
+        ...(comp && { comparator: comp as Comparator })
+      }
+      setResult(quantity)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Build error")
+      setResult(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">FHIR Quantity Builder</h1>
+        <h1 className="text-3xl font-bold">Quantity Builder</h1>
         <p className="text-muted-foreground">
-          Build valid FHIR Quantity objects with UCUM units for healthcare interoperability.
+          Build valid quantity objects with UCUM units for healthcare applications.
         </p>
       </div>
 
@@ -145,7 +198,7 @@ export default function FHIRPage() {
                 disabled={loading}
                 className="w-full"
               >
-                {loading ? "Building..." : "Build FHIR Quantity"}
+                {loading ? "Building..." : "Build Quantity"}
               </Button>
             </div>
           </CardContent>
@@ -153,9 +206,9 @@ export default function FHIRPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>FHIR Quantity JSON</CardTitle>
+            <CardTitle>Quantity JSON</CardTitle>
             <CardDescription>
-              The generated FHIR Quantity resource
+              The generated quantity object with UCUM units
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -169,7 +222,7 @@ export default function FHIRPage() {
             {result && (
               <div className="space-y-4">
                 <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
-                  <p className="font-medium text-sm mb-2">FHIR Quantity ✓</p>
+                  <p className="font-medium text-sm mb-2">Quantity ✓</p>
                   <pre className="text-xs font-mono bg-background p-3 rounded border overflow-auto max-h-64">
                     {JSON.stringify(result, null, 2)}
                   </pre>
@@ -245,12 +298,12 @@ export default function FHIRPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>About FHIR Quantity</CardTitle>
+          <CardTitle>About Quantity Objects</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
-            FHIR Quantity is a data type used to represent measured amounts in healthcare. 
-            It includes a numerical value, unit of measure, and optional comparator.
+            Quantity objects are used to represent measured amounts in healthcare applications. 
+            They include a numerical value, unit of measure, and optional comparator.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>

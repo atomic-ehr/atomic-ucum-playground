@@ -4,10 +4,10 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { parse, convert } from "@atomic-ehr/ucum"
+import ucum from "@atomic-ehr/ucum"
 
 const conversionExamples = [
-  { name: "Blood Glucose", value: 100, from: "mg/dL", to: "mmol/L" },
+  { name: "Hemoglobin", value: 14, from: "g/dL", to: "g/L" },
   { name: "Body Weight", value: 150, from: "[lb_av]", to: "kg" },
   { name: "Temperature", value: 98.6, from: "[degF]", to: "Cel" },
   { name: "Blood Pressure", value: 120, from: "mm[Hg]", to: "kPa" },
@@ -16,9 +16,9 @@ const conversionExamples = [
 ]
 
 export default function ConverterPage() {
-  const [value, setValue] = useState(100)
-  const [fromUnit, setFromUnit] = useState("mg/dL")
-  const [toUnit, setToUnit] = useState("mmol/L")
+  const [value, setValue] = useState(14)
+  const [fromUnit, setFromUnit] = useState("g/dL")
+  const [toUnit, setToUnit] = useState("g/L")
   const [result, setResult] = useState<number | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -30,9 +30,16 @@ export default function ConverterPage() {
     setError("")
     
     try {
-      const fromQuantity = parse(`${value} ${fromUnit}`)
-      const converted = convert(fromQuantity, toUnit)
-      setResult(converted.value)
+      // First check if units are convertible
+      if (!ucum.isConvertible(fromUnit, toUnit)) {
+        setError(`Cannot convert between ${fromUnit} and ${toUnit} - incompatible dimensions`)
+        setResult(null)
+        return
+      }
+      
+      // Perform the conversion
+      const converted = ucum.convert(value, fromUnit, toUnit)
+      setResult(converted)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Conversion error")
       setResult(null)
@@ -47,6 +54,35 @@ export default function ConverterPage() {
     setToUnit(example.to)
     setResult(null)
     setError("")
+    // Auto-convert after loading example
+    setTimeout(() => {
+      performConversionWithParams(example.value, example.from, example.to)
+    }, 100)
+  }
+  
+  const performConversionWithParams = async (val: number, from: string, to: string) => {
+    if (!val || !from.trim() || !to.trim()) return
+    
+    setLoading(true)
+    setError("")
+    
+    try {
+      // First check if units are convertible
+      if (!ucum.isConvertible(from, to)) {
+        setError(`Cannot convert between ${from} and ${to} - incompatible dimensions`)
+        setResult(null)
+        return
+      }
+      
+      // Perform the conversion
+      const converted = ucum.convert(val, from, to)
+      setResult(converted)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Conversion error")
+      setResult(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const swapUnits = () => {

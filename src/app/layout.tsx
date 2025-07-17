@@ -3,7 +3,7 @@ import { Navigation } from "@/components/navigation";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "UCUM Playground",
+  title: "@atomic-ehr/ucum",
   description: "Interactive playground for UCUM unit parsing and conversion",
 };
 
