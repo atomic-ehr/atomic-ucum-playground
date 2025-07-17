@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import ucum from "@atomic-ehr/ucum"
+import type { ValidationResult } from "@atomic-ehr/ucum"
 
 const examples = [
   "mg/dL",
@@ -50,7 +51,7 @@ export default function ParserPage() {
   const [result, setResult] = useState<ParseResult | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [validationResult, setValidationResult] = useState<any>(null)
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
 
   const parseExpression = async (expr?: string) => {
     const exprToParse = expr || expression
@@ -131,7 +132,7 @@ export default function ParserPage() {
                 placeholder="Enter UCUM expression (e.g., mg/dL)"
                 onKeyDown={(e) => e.key === "Enter" && parseExpression()}
               />
-              <Button onClick={parseExpression} disabled={loading}>
+              <Button onClick={() => parseExpression()} disabled={loading}>
                 {loading ? "Parsing..." : "Parse"}
               </Button>
             </div>
